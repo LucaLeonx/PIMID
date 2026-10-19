@@ -22,12 +22,12 @@
 #include "zsim_hooks.h"
 #include "../../include/pimid_devorg.h"
 
-#define DEFAULT_VERTICES 512
+#define DEFAULT_VERTICES 262144
 #define DEFAULT_DEGREE   8
 
 static uint32_t bench_rand(uint32_t* s) {
-    *s = *s * 1103515245 + 12345;
-    return (*s >> 16) & 0x7FFF;
+    *s = *s * 1664525u + 1013904223u;
+    return *s >> 8;
 }
 
 static int parse_int_arg(int argc, char** argv, const char* flag, int def) {

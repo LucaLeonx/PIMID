@@ -13,6 +13,7 @@
 | [power.md](power.md) | McPAT power/area integration |
 | [build.md](build.md) | Building from source, custom QEMU, no-root/HPC notes, Docker, reproducibility |
 | [yaml_reference.md](yaml_reference.md) | Complete configuration key reference |
+| [address_translation/README.md](address_translation/README.md) | PIM MMU design, page-table walk timing, configuration, statistics, and limitations |
 | [dram_specs.md](dram_specs.md) | Per-technology JEDEC organization mapping |
 | [memory_spec_structs.md](memory_spec_structs.md) | C++ architecture-spec structs (internal port bitwidths, scaling studies) |
 | [cache_warehouse.md](cache_warehouse.md) | Characterization cache warehouse internals |

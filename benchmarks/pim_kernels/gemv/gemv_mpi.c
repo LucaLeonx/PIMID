@@ -15,7 +15,7 @@
 #include "zsim_hooks.h"
 #include "../../include/pimid_devorg.h"
 
-#define DEFAULT_SIZE 256
+#define DEFAULT_SIZE 2048
 
 static int parse_int_arg(int argc, char** argv, const char* flag, int def) {
     for (int i = 1; i < argc - 1; i++)

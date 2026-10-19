@@ -378,15 +378,14 @@ struct GlobSimInfo {
         uint32_t peMemMapData[4096] = {};
         uint32_t peMemMapSize = 0;  // number of PEs in the map
 
-        // Optional synthetic PIM-side data VA->PA/TLB model. The linux-user
-        // QEMU plugin provides guest virtual addresses; these fields control
-        // the modeled PIM translation stage, not QEMU's functional MMU.
+        // Optional PIM-side three-level radix page-table/TLB model. The
+        // linux-user QEMU plugin provides guest virtual addresses; page
+        // mappings and first-touch faults are simulated by PIMID.
         bool addressTranslationEnabled = false;
         uint32_t addressTranslationPageSize = 4096;
         uint32_t addressTranslationTlbEntries = 64;
         uint32_t addressTranslationTlbAssociativity = 4;
-        uint32_t addressTranslationTlbHitLatency = 1;
-        uint32_t addressTranslationPageWalkLatency = 20;
+        uint32_t addressTranslationTlbLookupLatency = 1;
     } hierarchy;
 
     // PCIe/CXL/NVLink host-device interconnect timing model

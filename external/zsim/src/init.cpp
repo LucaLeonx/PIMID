@@ -779,10 +779,8 @@ static void InitSystem(Config& config) {
             config.get<uint32_t>("sys.hierarchy.addressTranslationTlbEntries", 64);
         zinfo->hierarchy.addressTranslationTlbAssociativity =
             config.get<uint32_t>("sys.hierarchy.addressTranslationTlbAssociativity", 4);
-        zinfo->hierarchy.addressTranslationTlbHitLatency =
-            config.get<uint32_t>("sys.hierarchy.addressTranslationTlbHitLatency", 1);
-        zinfo->hierarchy.addressTranslationPageWalkLatency =
-            config.get<uint32_t>("sys.hierarchy.addressTranslationPageWalkLatency", 20);
+        zinfo->hierarchy.addressTranslationTlbLookupLatency =
+            config.get<uint32_t>("sys.hierarchy.addressTranslationTlbLookupLatency", 1);
         if (zinfo->hierarchy.peMemMapSize > MAX_THREADS) {
             warn("peMemMapSize %u exceeds MAX_THREADS (%d), clamping",
                  zinfo->hierarchy.peMemMapSize, MAX_THREADS);

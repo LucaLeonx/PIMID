@@ -95,7 +95,6 @@ void ConfigManager::loadDefaults() {
 
     // Address translation defaults
     config_["address_translation.tlb_entries"] = "64";
-    config_["address_translation.page_fault_penalty_cycles"] = "100";
     config_["address_translation.bandwidth_utilization_threshold"] = "0.90";
     config_["address_translation.bottleneck_detection_contentions"] = "100";
     config_["address_translation.bottleneck_detection_bw_threshold"] = "0.90";

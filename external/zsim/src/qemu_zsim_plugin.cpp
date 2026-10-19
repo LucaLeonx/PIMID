@@ -27,6 +27,7 @@
 #include <memory>
 #include <unordered_map>
 #include <mutex>
+#include <vector>
 
 /* QEMU plugin API (C interface) */
 extern "C" {
@@ -216,16 +217,13 @@ static bool in_zsim[MAX_VCPUS];
 /* ROI state -- set by mov $op, %rcx + xchg %rcx, %rcx (zsim_hooks.h magic ops) */
 static std::atomic<bool> in_roi{true};              /* true = record; default on for non-ROI workloads */
 static std::unique_ptr<pimid::AddressTranslator> g_addressTranslator;
-static std::mutex g_addressTranslationMutex;
 static void addressTranslationRoiBegin() {
     if (!g_addressTranslator) return;
-    std::lock_guard<std::mutex> lock(g_addressTranslationMutex);
     g_addressTranslator->resetStats();
     g_addressTranslator->setStatsEnabled(true);
 }
 static void addressTranslationRoiEnd() {
     if (!g_addressTranslator) return;
-    std::lock_guard<std::mutex> lock(g_addressTranslationMutex);
     g_addressTranslator->setStatsEnabled(false);
 }
 static void roiRebaseTrafficCounters(const char* where);   // 1.11.90, defined below
@@ -1050,7 +1048,6 @@ void SimEnd() {
      * callback. Emit plugin-owned counters here, after simulation activity has
      * stopped and before the process exits. */
     if (g_addressTranslator) {
-        std::lock_guard<std::mutex> lock(g_addressTranslationMutex);
         g_addressTranslator->printStats();
     }
 
@@ -1327,12 +1324,12 @@ static void mem_cb(unsigned int vcpu_index,
 
     if (vcpu_index < MAX_VCPUS) in_zsim[vcpu_index] = true;
     uint64_t simAddr = vaddr;
+    std::vector<uint64_t> simAddresses;
     if (g_addressTranslator && cores[tid] &&
         dynamic_cast<ALUCore*>(cores[tid]) != nullptr) {
-        /* The PIM-side model uses a synthetic identity VA->PA map. Each PIM
-         * PE has its own TLB; the page table is process-local because each
-         * QEMU/MPI process owns a separate plugin instance. QEMU linux-user
-         * does not expose guest physical addresses or its host page walks. */
+        /* Each PIM PE has a data TLB over the process-local simulated page
+         * table. QEMU linux-user provides the guest VA, while PIMID supplies
+         * simulated PFNs and first-touch fault handling. */
         uint32_t peId = cids[tid];
         if (peId == INVALID_CID || peId == UNINITIALIZED_CID) peId = tid;
         const uint32_t pageSize = zinfo->hierarchy.addressTranslationPageSize;
@@ -1341,36 +1338,47 @@ static void mem_cb(unsigned int vcpu_index,
         const uint64_t lastAddr = vaddr + static_cast<uint64_t>(accessSize - 1);
         const uint64_t firstPage = vaddr >> pageBits;
         const uint64_t lastPage = lastAddr >> pageBits;
-        uint64_t translationCycles = 0;
-        {
-            std::lock_guard<std::mutex> lock(g_addressTranslationMutex);
-            for (uint64_t page = firstPage; page <= lastPage; page++) {
-                const uint64_t pageAddr = (page == firstPage)
-                    ? vaddr : (page << pageBits);
-                if (!g_addressTranslator->isPageMapped(page)) {
-                    /* Lazy identity mapping is the explicit synthetic policy:
-                     * page allocation itself is not treated as a page fault. */
-                    g_addressTranslator->mapPage(page, page, peId);
+        simAddresses.reserve(static_cast<size_t>(lastPage - firstPage + 1));
+        const bool isWrite = qemu_plugin_mem_is_store(info);
+        ALUCore* alu = static_cast<ALUCore*>(cores[tid]);
+        const uint32_t tlbLookupLatency =
+            zinfo->hierarchy.addressTranslationTlbLookupLatency;
+        for (uint64_t page = firstPage; page <= lastPage; page++) {
+            const uint64_t pageAddr = (page == firstPage)
+                ? vaddr : (page << pageBits);
+            bool tlbHit = false;
+            pimid::Cycle latency = 0;
+            bool tlbLookupCharged = false;
+            const auto pageTableAccess = [&](pimid::Address pteAddress,
+                                             bool isPteWrite) -> pimid::Cycle {
+                // The lookup is paid before the first dependent PTE request.
+                if (!tlbLookupCharged) {
+                    alu->addDelay(tlbLookupLatency);
+                    tlbLookupCharged = true;
                 }
-                bool tlbHit = false;
-                pimid::Cycle latency = 0;
-                const pimid::Address translated = g_addressTranslator->translate(
-                    pageAddr, peId, tlbHit, latency);
-                if (page == firstPage) simAddr = translated;
-                translationCycles += latency;
-                if (page == UINT64_MAX) break;
-            }
-        }
-        if (translationCycles > 0) {
-            const uint32_t charged = static_cast<uint32_t>(std::min<uint64_t>(
-                translationCycles, 0xFFFFFFFFull));
-            cores[tid]->addDelay(charged);
+                return alu->issuePageTableAccess(pteAddress, isPteWrite);
+            };
+            const pimid::Address translated = g_addressTranslator->translate(
+                pageAddr, peId, tlbHit, latency, isWrite, pageTableAccess);
+            // A hit normally has no walker request. The first store to a clean
+            // TLB entry can issue a hardware dirty-bit PTE write, whose callback
+            // already charged the lookup latency.
+            if (tlbHit && !tlbLookupCharged) alu->addDelay(tlbLookupLatency);
+            simAddresses.push_back(translated);
+            if (page == firstPage) simAddr = translated;
+            if (page == UINT64_MAX) break;
         }
     }
-    if (qemu_plugin_mem_is_store(info)) {
-        fPtrs[tid].storePtr(tid, simAddr);
-    } else {
-        fPtrs[tid].loadPtr(tid, simAddr);
+    const bool isStore = qemu_plugin_mem_is_store(info);
+    if (simAddresses.empty()) simAddresses.push_back(simAddr);
+    // A cross-page operation may map its pages to non-contiguous PFNs. Split
+    // it into one modeled line access per translated page segment.
+    for (const uint64_t translated_address : simAddresses) {
+        if (isStore) {
+            fPtrs[tid].storePtr(tid, translated_address);
+        } else {
+            fPtrs[tid].loadPtr(tid, translated_address);
+        }
     }
     if (vcpu_index < MAX_VCPUS) in_zsim[vcpu_index] = false;
 }
@@ -3724,11 +3732,11 @@ int qemu_plugin_install(qemu_plugin_id_t id,
         atConfig.page_bits = 0;  // derive from the validated power-of-two page size
         atConfig.tlb_entries = zinfo->hierarchy.addressTranslationTlbEntries;
         atConfig.tlb_associativity = zinfo->hierarchy.addressTranslationTlbAssociativity;
-        atConfig.tlb_hit_latency = zinfo->hierarchy.addressTranslationTlbHitLatency;
-        atConfig.page_walk_latency = zinfo->hierarchy.addressTranslationPageWalkLatency;
+        atConfig.tlb_lookup_latency = zinfo->hierarchy.addressTranslationTlbLookupLatency;
         g_addressTranslator.reset(new pimid::AddressTranslator(atConfig));
-        info("[PIM Translation] enabled for device ALU PEs; synthetic identity VA->PA map; "
-             "page walks use fixed PIM-side latency (no page-table memory traffic)");
+        info("[PIM Translation] enabled for device ALU PEs; 3-level radix page table "
+             "with simulated physical frames and first-touch faults; all PTE reads "
+             "and writes use the PE memory-interface path");
     }
 
     sim_initialized = true;  // mark init complete -- subsequent vCPUs are application threads

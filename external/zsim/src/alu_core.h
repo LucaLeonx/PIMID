@@ -94,6 +94,11 @@ class ALUCore : public Core {
         uint64_t getPhaseCycles() const;
         uint64_t getCycles() const {return curCycle;}
 
+        // Issue a hardware page-table request directly through this PE's
+        // memory interface, including addresses local to the PE's placement.
+        // Returns the service cycles charged by the interface.
+        uint64_t issuePageTableAccess(Address byteAddress, bool isWrite);
+
         void contextSwitch(int32_t gid);
         virtual void join();
 

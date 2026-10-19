@@ -1651,14 +1651,13 @@ struct UnifiedConfig {
     std::string pe_type;
     std::string placement_level;
     int num_pes;
-    // Optional synthetic PIM-side VA->PA/TLB model (QEMU linux-user supplies
-    // guest virtual addresses; this does not model the host OS's real MMU).
+    // Optional PIM-side 3-level radix page-table/TLB model. QEMU linux-user
+    // supplies guest virtual addresses; mappings and faults are simulated.
     bool address_translation_enabled = false;
     uint32_t address_translation_page_size = 4096;
     uint32_t address_translation_tlb_entries = 64;
     uint32_t address_translation_tlb_associativity = 4;
-    uint32_t address_translation_tlb_hit_latency = 1;
-    uint32_t address_translation_page_walk_latency = 20;
+    uint32_t address_translation_tlb_lookup_latency = 1;
 
     /* 1.9.32: the compute unit's datapath, as configuration rather than as a
      * constant buried in the power model. These four say what the element IS:
@@ -5599,10 +5598,8 @@ static void emitZSimHierarchyBlock(std::ostream& out, const UnifiedConfig& confi
         << config.address_translation_tlb_entries << ";\n";
     out << "        addressTranslationTlbAssociativity = "
         << config.address_translation_tlb_associativity << ";\n";
-    out << "        addressTranslationTlbHitLatency = "
-        << config.address_translation_tlb_hit_latency << ";\n";
-    out << "        addressTranslationPageWalkLatency = "
-        << config.address_translation_page_walk_latency << ";\n";
+    out << "        addressTranslationTlbLookupLatency = "
+        << config.address_translation_tlb_lookup_latency << ";\n";
     // Clock (MHz) used to convert device memory bandwidth into bytes/cycle for
     // the M/D/1 + bandwidth-floor contention. MUST be the DEVICE's own clock so
     // the device cycle count is invariant to the host/reference clock. Device
@@ -14571,8 +14568,8 @@ int main(int argc, char** argv) {
             }
 
             // Optional PIM-side data-address translation. Linux-user QEMU
-            // supplies guest virtual addresses, so the simulator uses a
-            // synthetic identity VA->PA page map and models the TLB/walk cost.
+            // supplies guest virtual addresses; PIMID models a sparse three-
+            // level radix table and allocates simulated physical frames.
             if (yaml_cfg["address_translation"]) {
                 const YAML::Node at = yaml_cfg["address_translation"];
                 config.address_translation_enabled = yamlBool(
@@ -14586,18 +14583,16 @@ int main(int argc, char** argv) {
                 config.address_translation_tlb_associativity = yamlU32(
                     at["tlb_associativity"], config.address_translation_tlb_associativity,
                     "address_translation.tlb_associativity");
-                config.address_translation_tlb_hit_latency = yamlU32(
-                    at["tlb_hit_latency_cycles"], config.address_translation_tlb_hit_latency,
-                    "address_translation.tlb_hit_latency_cycles");
-                config.address_translation_page_walk_latency = yamlU32(
-                    at["page_walk_latency_cycles"], config.address_translation_page_walk_latency,
-                    "address_translation.page_walk_latency_cycles");
+                config.address_translation_tlb_lookup_latency = yamlU32(
+                    at["tlb_lookup_latency_cycles"],
+                    config.address_translation_tlb_lookup_latency,
+                    "address_translation.tlb_lookup_latency_cycles");
 
                 if (config.address_translation_enabled) {
                     const uint32_t page = config.address_translation_page_size;
-                    if (page < 1024 || (page & (page - 1)) != 0) {
-                        std::cerr << "Error: address_translation.page_size_bytes must be a "
-                                     "power of two >= 1024.\n";
+                    if (page != 4096) {
+                        std::cerr << "Error: this initial three-level page-table model "
+                                     "supports only address_translation.page_size_bytes: 4096.\n";
                         std::exit(2);
                     }
                     const uint32_t entries = config.address_translation_tlb_entries;
@@ -14613,12 +14608,11 @@ int main(int argc, char** argv) {
                                      "for method=exec, scope=device, and pim.pe.type=alu_core.\n";
                         std::exit(2);
                     }
-                    std::cout << "[config] PIM-side address translation enabled: synthetic "
-                              << "identity page map, " << page << " B pages, TLB "
-                              << entries << " entries / " << ways << " ways, hit "
-                              << config.address_translation_tlb_hit_latency << " cycles, "
-                              << "abstract PIM page walk "
-                              << config.address_translation_page_walk_latency << " cycles"
+                    std::cout << "[config] PIM-side address translation enabled: 3-level "
+                              << "radix page table, " << page << " B pages, TLB "
+                              << entries << " entries / " << ways << " ways, lookup "
+                              << config.address_translation_tlb_lookup_latency
+                              << " cycles, PTE traffic through PE memory interface"
                               << std::endl;
                 }
             }

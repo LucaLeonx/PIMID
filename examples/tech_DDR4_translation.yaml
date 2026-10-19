@@ -20,5 +20,4 @@ address_translation:
   page_size_bytes: 4096
   tlb_entries: 64
   tlb_associativity: 4
-  tlb_hit_latency_cycles: 1
-  page_walk_latency_cycles: 20
+  tlb_lookup_latency_cycles: 1

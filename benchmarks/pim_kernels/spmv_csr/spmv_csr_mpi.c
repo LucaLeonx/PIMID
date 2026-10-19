@@ -7,7 +7,7 @@
 #include <mpi.h>
 #include "zsim_hooks.h"
 
-#define DEFAULT_SIZE 1024
+#define DEFAULT_SIZE 8192
 
 static uint32_t bench_rand(uint32_t* s) {
     *s = *s * 1103515245 + 12345;

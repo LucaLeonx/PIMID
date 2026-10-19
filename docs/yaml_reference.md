@@ -78,19 +78,34 @@ address_translation:
   page_size_bytes: 4096
   tlb_entries: 64
   tlb_associativity: 4
-  tlb_hit_latency_cycles: 1
-  page_walk_latency_cycles: 20
+  tlb_lookup_latency_cycles: 1
 ```
 
-This opt-in model applies to data accesses on device `alu_core` PEs. QEMU's
-Linux user-mode plugin supplies guest virtual addresses, so PIMID uses a
-synthetic identity VA-to-PA page map. TLB misses pay the configured lookup
-latency plus fixed walk latency on the PIM-side cycle path; page-table reads
-are not yet sent through Ramulator or the NoC. The TLB is per PE, starts cold at the first ROI access,
-and reports per-PE/aggregate hit, miss, walk, and cycle statistics at exit.
-It is currently supported only for `method: exec`, `scope: device`, and
-`pim.pe.type: alu_core`. This is an explicit PIM translation model, not the
-host CPU's TLB or QEMU's functional address translation.
+This opt-in model applies to data accesses on device `alu_core` PEs. It uses a
+sparse three-level radix page table for 48-bit canonical virtual addresses, with
+three 12-bit indices and 4 KiB pages. This is not a literal x86 page-table
+format. A TLB miss performs ordered, dependent
+PTE reads through the PE memory interface, so each request uses the configured
+device memory service model and NoC path. A first-touch fault installs page
+table entries with PE memory-interface writes, then retries the walk; the
+simulated OS fault-handler computation is not charged. The first access sets
+the leaf PTE's accessed bit, and a first store sets its dirty bit, modeled as
+a PE memory-interface write. A first store after a read can issue the dirty-bit
+write on a TLB hit; ordinary subsequent hits do not access the page table. The
+table is held as sparse simulator metadata, while its PTE addresses occupy
+simulated physical frames allocated from the same PFN space as data pages. A
+12-bit index gives each table 4096 eight-byte entries (32 KiB), backed by
+eight contiguous 4 KiB frames. TLBs are per PE. Statistics include PTE reads,
+PTE writes, first-touch faults, and translation cycles. Only 4 KiB data pages
+are supported in this first version. The model is currently available for
+`method: exec`, `scope: device`, and `pim.pe.type: alu_core`.
+
+`tlb_lookup_latency_cycles` is the direct lookup cost on both TLB hits and
+misses. PTE service time is not configured separately: it comes from the PE
+memory interface, including the detailed NoC when cycle-accurate Garnet is
+enabled. In this version these device requests use ZSim's PE memory-interface
+timing path rather than being submitted as live requests to the standalone
+Ramulator controller.
 
 ---
 

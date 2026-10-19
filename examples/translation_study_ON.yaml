@@ -1,0 +1,50 @@
+# Starting point for PIM-side address-translation design sweeps.
+# Run with: ./build/pimid --method exec --config examples/translation_study_ON.yaml
+# Keep the workload and all system settings fixed while changing one translation
+# parameter at a time. The comments below suggest a small comparison matrix.
+name: translation_study_baseline
+description: >-
+  Single-PE STREAM Triad with a working set larger than the default TLB,
+  for comparing modeled PIM-side translation overhead.
+scope: device
+
+workload:
+  binary: benchmarks/pim_kernels/stream_triad/stream_triad
+  # Three 1 MiB arrays; 768 4 KiB pages total, enough to exceed the default
+  # 64-entry TLB and expose capacity and page-walk effects.
+  args: ["--size", "262144"]
+
+pim:
+  pe:
+    type: alu_core
+    count: 1
+  placement:
+    level: BANK
+  mc:
+    type: simple
+
+memory:
+  technology: DDR4
+
+noc:
+  topology: H_TREE
+  model: analytical
+
+address_translation:
+  enabled: true
+  page_size_bytes: 4096
+  tlb_entries: 64
+  tlb_associativity: 4
+  tlb_lookup_latency_cycles: 1
+
+# Suggested one-factor-at-a-time runs (give each run a distinct name):
+#   TLB capacity:    16, 64, 256, 1024 entries
+#   Associativity:   1, 4, fully associative (tlb_associativity = tlb_entries)
+#   TLB lookup latency: 1, 2, 4 cycles
+#   NoC model and placement: analytical/detailed, BANK/SUBARRAY/CHANNEL
+# PTE request time comes from the selected PE memory-interface and NoC model;
+# there are no independent PTE-latency or fault-penalty knobs. This first MMU
+# version fixes page size at 4096 bytes and uses three levels. Keep
+# associativity a positive divisor of tlb_entries. Record total simulated
+# cycles plus hits, misses, PTE reads/writes, faults, and translation cycles.
+

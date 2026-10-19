@@ -7,7 +7,7 @@
 #include <mpi.h>
 #include "zsim_hooks.h"
 
-#define DEFAULT_SIZE 16384
+#define DEFAULT_SIZE 1048576
 
 static int parse_int_arg(int argc, char** argv, const char* flag, int def) {
     for (int i = 1; i < argc - 1; i++)

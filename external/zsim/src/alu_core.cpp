@@ -56,6 +56,17 @@ uint64_t ALUCore::getPhaseCycles() const {
     return curCycle % zinfo->phaseLength;
 }
 
+uint64_t ALUCore::issuePageTableAccess(Address byteAddress, bool isWrite) {
+    if (!mi_) panic("Page-table walk requires a PE memory interface");
+    const uint64_t startCycle = curCycle;
+    const Address lineAddr = byteAddress >> lineBits;
+    MESIState state = I;
+    MemReq req = {lineAddr, isWrite ? GETX : GETS, 0, &state, curCycle,
+                  nullptr, state, srcId_, MemReq::PAGETABLE};
+    curCycle = mi_->access(req);
+    return curCycle - startCycle;
+}
+
 void ALUCore::initStats(AggregateStat* parentStat) {
     AggregateStat* coreStat = new AggregateStat();
     coreStat->init(name.c_str(), "Core stats");
