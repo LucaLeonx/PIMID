@@ -28,7 +28,7 @@ memory:
 
 noc:
   topology: H_TREE
-  model: analytical
+  model: detailed
 
 address_translation:
   enabled: false

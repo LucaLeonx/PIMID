@@ -114,12 +114,19 @@ QEMU guest VA
 The request is a tagged ZSim memory-interface request (`PAGETABLE`), using
 `GETS` for reads and `GETX` for writes. Its address is the PTE's simulated
 physical byte address converted to the memory interface's cache-line address.
+At startup, page-table frames are placed in memory units that do not host PEs,
+when such units exist. Ordinary data frames use a separate allocator that skips
+units already claimed by the page tables. This keeps page-table placement
+separate from application data and makes the PTE address decode to a distinct
+NoC endpoint in the common sparse-PE case. If every unit hosts a PE, the model
+chooses a neighboring unit and reports that some PTE accesses may remain local.
+
 The interface returns the service cycles, and the PE's simulated cycle advances
-to the completion time. When the selected path has a detailed Garnet NoC,
-requests follow that route; with the analytical model, the PE memory interface
-uses its analytical local/remote service model. Configured placement and
-connectivity therefore affect PTE service just as they affect other PE-MI
-requests.
+to the completion time. With detailed Garnet, PTE requests whose source and
+destination endpoints differ are injected into the NoC. With the analytical
+model, remote PTE requests use its hierarchy traversal and latency model but do
+not produce Garnet packets. PE memory-interface statistics include
+`pteNoCRoute`, the number of PTE requests that took a non-local route.
 
 This implementation injects PTE traffic through the ZSim PE memory interface.
 It does not create an independent page-walker timing model or submit each PTE
@@ -127,6 +134,10 @@ access as a live request to the standalone Ramulator controller. Do not interpre
 PTE counters as standalone Ramulator controller transactions. The selected
 PE-MI path supplies the modeled service and network timing; the PTE payload and
 contents remain in translator metadata.
+
+To inspect actual packet traversal, use `noc.model: detailed` and check both
+`pteNoCRoute` and Garnet's packet/hop counters. The translation study ON/OFF
+examples select detailed mode so this path is visible in their output.
 
 The TLB lookup cost is charged immediately before the first dependent PTE
 request on a miss, or directly on a hit when no PTE update request is needed.

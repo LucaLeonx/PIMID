@@ -28,7 +28,9 @@ memory:
 
 noc:
   topology: H_TREE
-  model: analytical
+  # Use cycle-accurate routing so PTE accesses to the reserved page-table
+  # memory unit inject packets into Garnet and appear in NoC counters.
+  model: detailed
 
 address_translation:
   enabled: true

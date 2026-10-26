@@ -1,4 +1,5 @@
 # PIM Kernels Makefile — builds 8 benchmarks × 3 variants (serial, OpenMP, MPI)
+# plus standalone C++ data-structure benchmarks.
 # All .c files compiled as C++ (g++) for zsim_hooks.h compatibility.
 
 BENCHDIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
@@ -11,11 +12,13 @@ OMPFLAGS := -fopenmp
 LDFLAGS  := -lpthread
 
 KERNELS := stream_triad vector_add gemv spmv_csr bfs histogram reduction stencil_2d
+CPP_KERNELS := linked_list hash_map
 
 # Targets per kernel
 SERIAL_BINS := $(foreach k,$(KERNELS),$(BENCHDIR)/$(k)/$(k))
 OMP_BINS    := $(foreach k,$(KERNELS),$(BENCHDIR)/$(k)/$(k)_omp)
 MPI_BINS    := $(foreach k,$(KERNELS),$(BENCHDIR)/$(k)/$(k)_mpi)
+CPP_BINS    := $(foreach k,$(CPP_KERNELS),$(BENCHDIR)/$(k)/$(k))
 
 # Check if mpicxx is available. `which $(MPICXX) && echo yes || echo no`
 # captured by $(shell) yields "/usr/bin/mpicxx\nyes" (since $(shell) collects
@@ -24,9 +27,9 @@ MPI_BINS    := $(foreach k,$(KERNELS),$(BENCHDIR)/$(k)/$(k)_mpi)
 # yes/no signal is captured.
 HAS_MPI := $(shell command -v $(MPICXX) >/dev/null 2>&1 && echo yes || echo no)
 
-.PHONY: all clean serial omp mpi
+.PHONY: all clean serial omp mpi cpp
 
-all: serial omp
+all: serial omp cpp
 ifeq ($(HAS_MPI),yes)
 all: mpi
 else
@@ -36,6 +39,7 @@ endif
 serial: $(SERIAL_BINS)
 omp: $(OMP_BINS)
 mpi: $(MPI_BINS)
+cpp: $(CPP_BINS)
 
 # Serial: <kernel>/<kernel>.c -> <kernel>/<kernel>
 define SERIAL_RULE
@@ -58,5 +62,11 @@ $(BENCHDIR)/$(1)/$(1)_mpi: $(BENCHDIR)/$(1)/$(1)_mpi.c
 endef
 $(foreach k,$(KERNELS),$(eval $(call MPI_RULE,$(k))))
 
+define CPP_RULE
+$(BENCHDIR)/$(1)/$(1): $(BENCHDIR)/$(1)/$(1).cpp
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $$@ $$<
+endef
+$(foreach k,$(CPP_KERNELS),$(eval $(call CPP_RULE,$(k))))
+
 clean:
-	rm -f $(SERIAL_BINS) $(OMP_BINS) $(MPI_BINS)
+	rm -f $(SERIAL_BINS) $(OMP_BINS) $(MPI_BINS) $(CPP_BINS)
